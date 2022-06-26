@@ -27,11 +27,11 @@ struct can_frame canMsg;
 // Config                            21    22    23    24    25    26    27    28    29
 int servoPin[9]                 = {   3,    4,    5,    6,    7,    8,    9,   10,   11};
 int relayPin[9]                 = {  30,   31,   32,   33,   34,   35,   36,   37,   38};
-int weichenStellungGerade[9]    = {  70,   70,   40,   70,   70,   30,   95,  120,   40};
-int weichenStellungAbgebogen[9] = { 110,  110,  110,  110,  110,   90,   50,   45,   98};
+int weichenStellungGerade[9]    = {  60,   60,   40,   60,   60,   30,   95,  135,   40};
+int weichenStellungAbgebogen[9] = { 120,  120,  110,  120,  120,   90,   50,   45,   98};
 int relayDir[9]                 = {true, true, true, true, true,false, true, true, false};
 // state
-bool weichenState[9] =            {true, true,false,false,false,false, true, true, true};
+bool weichenState[9] =            {true, true, true,false,false,false, true, true, true};
 Servo servo[9];
 
 // winkel state
@@ -110,9 +110,10 @@ void sendCan(int weichenNr, ZCAN_MODE mode) {
 void initWeiche(int weichenNr) {
   bool stellungGerade = getWeichenState(weichenNr);
   digitalWrite(getRelayPin(weichenNr), stellungGerade ? (getRelayDirection(weichenNr) ? LOW : HIGH) : (getRelayDirection(weichenNr) ? HIGH : LOW));
-  int actWinkel = stellungGerade ? getWeichenStellungGerade(weichenNr) : getWeichenStellungAbgebogen(weichenNr);
-  setActWinkel(weichenNr, actWinkel);
-  setServoTo(weichenNr, stellungGerade);
+  int zielWinkel = stellungGerade ? getWeichenStellungGerade(weichenNr) : getWeichenStellungAbgebogen(weichenNr);
+  setActWinkel(weichenNr, zielWinkel);
+  setZielWinkel(weichenNr, zielWinkel);
+  servo[weichenNr - WEICHEN_NR_FROM].write(zielWinkel);
 }
 
 void computeCommand(int weichenNr, bool stellungGerade) {
