@@ -53,22 +53,23 @@
 #define MICROSECONDS_PER_CYCLE (50)
 
 // in steps
-#define STEPS_E0 (-21000)
-#define STEPS_E1 (69500)
-#define STEPS_E2 (296500)
-#define STEPS_E3 (517500)
-#define STEPS_E4 (734500)
-#define STEPS_E5 (961000)
-#define STEPS_E6 (1185000)
-#define STEPS_E7 (1402500)
-#define STEPS_E8 (1631000)
-#define STEPS_E9 (1850500)
-#define STEPS_E10 (2072000)
-#define STEPS_E11 (2292500)
+#define STEPS_E0 (5000)
+#define STEPS_E1 (100500)
+#define STEPS_E2 (327500)
+#define STEPS_E3 (548500)
+#define STEPS_E4 (765500)
+#define STEPS_E5 (992000)
+#define STEPS_E6 (1306000)
+#define STEPS_E7 (1443500)
+#define STEPS_E8 (1661000)
+#define STEPS_E9 (1881500)
+#define STEPS_E10 (2103000)
+#define STEPS_E11 (2323500)
 
 // stepper motor state
 volatile long actSteps;
 volatile long goalSteps;
+volatile int debugOffsetSteps = 0;
 boolean up;  // true -> up, false -> down
 
 // CAN Params
@@ -87,7 +88,8 @@ enum VITRINE_STATE {
   STOPPED = 3,
   OPEN = 4,
   BLOCKED = 5,
-  DETECTING = 6
+  DETECTING = 6,
+  DEBUG_OFFSET = 7
 };
 
 VITRINE_STATE state;
@@ -104,10 +106,11 @@ unsigned long detectionTimestamp = 0;
 
 
 boolean isBottomLaserBlocked() {
-  if (digitalRead(LASER_BOTTOM_PIN) == LOW) {
-    return true;
-  }
-  return false;  
+ return false;
+ // if (digitalRead(LASER_BOTTOM_PIN) == LOW) {
+ //   return true;
+ // }
+ // return false;  
 }
 
 boolean isLaserBlocked() {
@@ -156,29 +159,29 @@ void sendCan(ZCAN_MODE mode) {
 
 long goalStepsFromLevel() {
   if (level == 1) {
-    return STEPS_E1;
+    return STEPS_E1 + debugOffsetSteps;
   } else if (level == 2) {
-    return STEPS_E2;
+    return STEPS_E2 + debugOffsetSteps;
   } else if (level == 3) {
-    return STEPS_E3;
+    return STEPS_E3 + debugOffsetSteps;
   } else if (level == 4) {
-    return STEPS_E4;
+    return STEPS_E4 + debugOffsetSteps;
   } else if (level == 5) {
-    return STEPS_E5;
+    return STEPS_E5 + debugOffsetSteps;
   } else if (level == 6) {
-    return STEPS_E6;
+    return STEPS_E6 + debugOffsetSteps;
   } else if (level == 7) {
-    return STEPS_E7;
+    return STEPS_E7 + debugOffsetSteps;
   } else if (level == 8) {
-    return STEPS_E8;
+    return STEPS_E8 + debugOffsetSteps;
   } else if (level == 9) {
-    return STEPS_E9;
+    return STEPS_E9 + debugOffsetSteps;
   } else if (level == 10) {
-    return STEPS_E10;
+    return STEPS_E10 + debugOffsetSteps;
   } else if (level == 11) {
-    return STEPS_E11;
+    return STEPS_E11 + debugOffsetSteps;
   }
-  return STEPS_E0;
+  return STEPS_E0 + debugOffsetSteps;
 }
 
 int relayPinFromLevel(uint8_t l) {
@@ -228,6 +231,8 @@ void printState() {
   Serial.print(level);
   Serial.print(" state: ");
   Serial.print(state);
+  Serial.print(" debugOffsetSteps: ");
+  Serial.print(debugOffsetSteps);  
   Serial.println();
 }
 
@@ -338,7 +343,9 @@ void computeCommand(int levelReceived, VITRINE_STATE stateReceived) {
   if (stateReceived == VITRINE_STATE::MOVING) {
     // level of command only relevant when state moving set
     level = levelReceived;
+    noInterrupts();
     goalSteps = goalStepsFromLevel();
+    interrupts();
     // allowed states from wich can be switched to moving
     if (state == VITRINE_STATE::STOPPED || state == VITRINE_STATE::OPEN || state == VITRINE_STATE::LEVEL_ZERO) {
       disableAllRelays();
@@ -354,6 +361,17 @@ void computeCommand(int levelReceived, VITRINE_STATE stateReceived) {
     }
   } else if (stateReceived == VITRINE_STATE::DETECTING) {
     detectingQueued = true;
+  } else if (stateReceived == VITRINE_STATE::DEBUG_OFFSET) {
+    noInterrupts();
+    if (levelReceived == 0 || levelReceived == 8) {
+      debugOffsetSteps = 0;
+    } else {
+      if (levelReceived > 8) {
+        levelReceived = (levelReceived - 8) * -1;
+      }
+      debugOffsetSteps += (levelReceived * 500);
+    }
+    interrupts();
   }
 }
 
