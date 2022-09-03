@@ -1,5 +1,4 @@
 #include <SPI.h>
-#include <TimerOne.h>
 #include <mcp2515.h>
 #include <zcan.h>
 
@@ -53,18 +52,18 @@
 #define MICROSECONDS_PER_CYCLE (50)
 
 // in steps
-#define STEPS_E0 (5000)
-#define STEPS_E1 (100500)
-#define STEPS_E2 (327500)
-#define STEPS_E3 (548500)
-#define STEPS_E4 (765500)
-#define STEPS_E5 (992000)
-#define STEPS_E6 (1306000)
-#define STEPS_E7 (1443500)
-#define STEPS_E8 (1661000)
-#define STEPS_E9 (1881500)
-#define STEPS_E10 (2103000)
-#define STEPS_E11 (2323500)
+#define STEPS_E0 (-12000)
+#define STEPS_E1 (-7500)  // -500 = -7500
+#define STEPS_E2 (219500) // -500 = 219500
+#define STEPS_E3 (439500) // -500 = 439500
+#define STEPS_E4 (659000) // -500 = 659000
+#define STEPS_E5 (884000) // -500 = 884000
+#define STEPS_E6 (1108500) // -500 = 1108500
+#define STEPS_E7 (1326000) // -500 = 1326000
+#define STEPS_E8 (11555000) // -500 = 1555000
+#define STEPS_E9 (1774500) // -500 = 1774500
+#define STEPS_E10 (1996500) // 0
+#define STEPS_E11 (2217000) // 0
 
 // stepper motor state
 volatile long actSteps;
@@ -106,11 +105,10 @@ unsigned long detectionTimestamp = 0;
 
 
 boolean isBottomLaserBlocked() {
- return false;
- // if (digitalRead(LASER_BOTTOM_PIN) == LOW) {
- //   return true;
- // }
- // return false;  
+ if (digitalRead(LASER_BOTTOM_PIN) == LOW) {
+    return true;
+ }
+ return false;  
 }
 
 boolean isLaserBlocked() {

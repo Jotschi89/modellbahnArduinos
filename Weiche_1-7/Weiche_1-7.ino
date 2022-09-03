@@ -27,7 +27,7 @@ struct can_frame canMsg;
 // Config                             1     2     3     4     5     6     7   
 int servoPin[7]                 = {   3,    4,    6,    5,    7,    8,    9};
 int relayPin[7]                 = {  30,   31,   32,   33,   34,   35,   36};
-int weichenStellungGerade[7]    = {  55,   60,  190,   60,   60,   60,   60};
+int weichenStellungGerade[7]    = {  75,   60,  190,   60,   60,   60,   60};
 int weichenStellungAbgebogen[7] = { 125,  135,  110,  120,  120,  120,  120};
 int relayDir[7]                 ={false,false, true,false, true, true, true};
 // state
