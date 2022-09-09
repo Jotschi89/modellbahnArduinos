@@ -61,7 +61,7 @@
 #define STEPS_E5 (884000) // -500 = 884000
 #define STEPS_E6 (1108500) // -500 = 1108500
 #define STEPS_E7 (1326000) // -500 = 1326000
-#define STEPS_E8 (1155500) // -500 = 1555000
+#define STEPS_E8 (1555000) // -500 = 1555000
 #define STEPS_E9 (1774500) // -500 = 1774500
 #define STEPS_E10 (1996500) // 0
 #define STEPS_E11 (2217000) // 0
