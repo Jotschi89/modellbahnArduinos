@@ -21,22 +21,23 @@ MCP2515 mcp2515(53); // SPI CS Pin
 struct can_frame canMsg;
 
 // Weichen Nrs
-#define WEICHEN_NR_FROM (1)
+#define WEICHEN_NR_FROM (2)
 #define WEICHEN_NR_TO (7)
 
-// Config                             1     2     3     4     5     6     7   
-int servoPin[7]                 = {   3,    4,    6,    5,    7,    8,    9};
-int relayPin[7]                 = {  30,   31,   32,   33,   34,   35,   36};
-int weichenStellungGerade[7]    = {  30,   60,  190,   60,   60,   60,   60};
-int weichenStellungAbgebogen[7] = { 130,  135,  110,  120,  120,  120,  120};
-int relayDir[7]                 ={false,false, true,false, true, true, true};
+// Config                            _2    _3    _4     5     6     7   
+int servoPin[6]                 = {   4,    6,    5,    7,    8,    9};
+int relayPin[6]                 = {  31,   32,   33,   34,   35,   36};
+int weichenStellungGerade[6]    = { 120,  190,   60,   60,   60,   60};
+int weichenStellungAbgebogen[6] = {  50,  110,  120,  120,  120,  120};
+int relayDir[6]                 ={false, true,false, true, true, true};
 // state
-bool weichenState[7] =            {true, true,false, true, true, true, true};
-Servo servo[7];
+bool weichenState[6] =            {true,false, true, true, true, true};
+Servo servo[6];
 
 // winkel state
-int actWinkelList[]  = {0, 0, 0, 0, 0, 0, 0};
-int zielWinkelList[] = {0, 0, 0, 0, 0, 0, 0};
+int actWinkelList[]  = {0, 0, 0, 0, 0, 0};
+int zielWinkelList[] = {0, 0, 0, 0, 0, 0};
+
 
 unsigned long lastWinkelStep = 0;
 
@@ -113,7 +114,11 @@ void initWeiche(int weichenNr) {
   int zielWinkel = stellungGerade ? getWeichenStellungGerade(weichenNr) : getWeichenStellungAbgebogen(weichenNr);
   setActWinkel(weichenNr, zielWinkel);
   setZielWinkel(weichenNr, zielWinkel);
-  servo[weichenNr - WEICHEN_NR_FROM].write(zielWinkel);
+  int weichenIndex = weichenNr - WEICHEN_NR_FROM;
+  servo[weichenIndex].attach(servoPin[weichenIndex]);
+  servo[weichenIndex].write(zielWinkel);
+  delay(1000);
+  servo[weichenIndex].detach();
 }
 
 void computeCommand(int weichenNr, bool stellungGerade) {
@@ -131,11 +136,9 @@ void computeCommand(int weichenNr, bool stellungGerade) {
 void setup() {
   // Serial.begin(9600); 
   
-  // init Relays
-  // init servos
   for (int i = WEICHEN_NR_FROM; i <= WEICHEN_NR_TO; i++) {
     pinMode(getRelayPin(i), OUTPUT);
-    servo[i-WEICHEN_NR_FROM].attach(getServoPin(i));
+    // servo[i-WEICHEN_NR_FROM].attach(getServoPin(i));
   }
   
   // init CAN
@@ -186,15 +189,22 @@ void loop() {
   }
 
   // stelle Weichen
-  if (millis() - lastWinkelStep >= 12) {
+  if (millis() - lastWinkelStep >= 8) {
     lastWinkelStep = millis();
     for (int i = WEICHEN_NR_FROM; i <= WEICHEN_NR_TO; i++) {
       int actWinkel = getActWinkel(i);
       int zielWinkel = getZielWinkel(i);
+      int weicheIndex = i - WEICHEN_NR_FROM;
       if (actWinkel != zielWinkel) {
         int inc = ((zielWinkel - actWinkel) > 0) ? 1 : -1;
         setActWinkel(i, actWinkel + inc);
-        servo[i - WEICHEN_NR_FROM].write(actWinkel + inc);
+        if (!servo[weicheIndex].attached()) {
+          servo[weicheIndex].attach(servoPin[weicheIndex]);
+        }
+        servo[weicheIndex].write(actWinkel + inc);
+        if (zielWinkel == actWinkel + inc) {
+          servo[weicheIndex].detach();
+        }
       }
     }
   }

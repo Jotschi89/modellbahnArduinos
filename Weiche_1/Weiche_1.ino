@@ -4,39 +4,41 @@
 #include <zcan.h>
 #include <Servo.h>
 
-// PIN Belegung CAN-Modul -> Arduino Mega 2560
+// PIN Belegung 
+// CAN-Module -> Arduino NANO
 // Int -> 2
-// SCK -> 52
-// SI  -> 51
-// SO  -> 50
-// CS  -> 53
+// SCK -> 13
+// SI  -> 11
+// SO  -> 12
+// CS  -> 10
 // GND -> GND
 // VCC -> +5V 
 
 // CAN Params
-#define NETWORK_ID (40204)
+#define NETWORK_ID (40209)
 #define PORT (1)
 
-MCP2515 mcp2515(53); // SPI CS Pin
+MCP2515 mcp2515(10); // SPI CS Pin
 struct can_frame canMsg;
 
 // Weichen Nrs
-#define WEICHEN_NR_FROM (21)
-#define WEICHEN_NR_TO (29)
+#define WEICHEN_NR_FROM (1)
+#define WEICHEN_NR_TO (1)
 
-// Config                            21    22   _23    24    25   _26   _27   _28   _29
-int servoPin[9]                 = {   3,    4,    5,    6,    7,    8,    9,   10,   11};
-int relayPin[9]                 = {  30,   31,   32,   33,   34,   35,   36,   37,   38};
-int weichenStellungGerade[9]    = {  60,   60,   40,   60,   60,   25,   95,  130,   40};
-int weichenStellungAbgebogen[9] = { 120,  120,  100,  120,  120,  100,   35,   60,  120};
-int relayDir[9]                 = {true, true, true, true, true,false, true, true, false};
+// Config                            _1 
+int servoPin[1]                 = {   3};
+int relayPin[1]                 = {   4};
+int weichenStellungGerade[1]    = {  30};
+int weichenStellungAbgebogen[1] = { 130};
+int relayDir[1]                 ={false};
 // state
-bool weichenState[9] =            {true, true, true,false,false,false, true, true, true};
-Servo servo[9];
+bool weichenState[1] =            {true};
+Servo servo[1];
 
 // winkel state
-int actWinkelList[]  = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-int zielWinkelList[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+int actWinkelList[]  = {0};
+int zielWinkelList[] = {0};
+
 
 unsigned long lastWinkelStep = 0;
 
