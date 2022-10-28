@@ -24,14 +24,14 @@ struct can_frame canMsg;
 #define WEICHEN_NR_FROM (21)
 #define WEICHEN_NR_TO (29)
 
-// Config                            21    22   _23    24    25   _26   _27   _28   _29
-int servoPin[9]                 = {   3,    4,    5,    6,    7,    8,    9,   10,   11};
-int relayPin[9]                 = {  30,   31,   32,   33,   34,   35,   36,   37,   38};
-int weichenStellungGerade[9]    = {  60,   60,   40,   60,   60,   25,   95,  130,   40};
-int weichenStellungAbgebogen[9] = { 120,  120,  100,  120,  120,  100,   35,   60,  120};
-int relayDir[9]                 = {true, true, true, true, true,false, true, true, false};
+// Config                            _21   _22   _23   _24   _25   _26   _27   _28   _29
+int servoPin[9]                 = {    3,    4,    5,    6,    7,    8,    9,   10,   11};
+int relayPin[9]                 = {   30,   31,   32,   33,   34,   35,   36,   37,   38};
+int weichenStellungGerade[9]    = {   60,   60,   40,   60,   60,   25,   95,  130,   40};
+int weichenStellungAbgebogen[9] = {  120,  120,  100,  120,  120,  100,   35,   60,  120};
+int relayDir[9]                 = {false,false, true, true,false,false, true, true, false};
 // state
-bool weichenState[9] =            {true, true, true,false,false,false, true, true, true};
+bool weichenState[9] =            { true, true, true,false, true, true, true, true, true};
 Servo servo[9];
 
 // winkel state

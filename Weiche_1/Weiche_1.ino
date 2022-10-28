@@ -26,10 +26,10 @@ struct can_frame canMsg;
 #define WEICHEN_NR_TO (1)
 
 // Config                            _1 
-int servoPin[1]                 = {   3};
+int servoPin[1]                 = {   9};
 int relayPin[1]                 = {   4};
-int weichenStellungGerade[1]    = {  30};
-int weichenStellungAbgebogen[1] = { 130};
+int weichenStellungGerade[1]    = {  20};
+int weichenStellungAbgebogen[1] = { 145};
 int relayDir[1]                 ={false};
 // state
 bool weichenState[1] =            {true};
