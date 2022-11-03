@@ -14,29 +14,29 @@
 // VCC -> +5V 
 
 // CAN Params
-#define NETWORK_ID (40204)
+#define NETWORK_ID (40203)
 #define PORT (1)
 
 MCP2515 mcp2515(53); // SPI CS Pin
 struct can_frame canMsg;
 
 // Weichen Nrs
-#define WEICHEN_NR_FROM (21)
-#define WEICHEN_NR_TO (29)
+#define WEICHEN_NR_FROM (17)
+#define WEICHEN_NR_TO (20)
 
-// Config                            _21   _22   _23   _24   _25   _26   _27   _28   _29
-int servoPin[9]                 = {   13,   12,    5,    6,    7,    8,    9,   10,   11};
-int relayPin[9]                 = {   30,   31,   32,   33,   34,   35,   36,   37,   38};
-int weichenStellungGerade[9]    = {   60,  120,   40,  120,   40,   25,   95,  130,   40};
-int weichenStellungAbgebogen[9] = {  135,   60,  100,   60,  120,  100,   35,   60,  120};
-int relayDir[9]                 = {false,false, true, true,false,false, true, true, false};
+// Config                             17    18    19    20
+int servoPin[4]                 = {    4,    5,    6,    7};
+int relayPin[4]                 = {   30,   31,   32,   33};
+int weichenStellungGerade[4]    = {   50,   50,   50,   50};
+int weichenStellungAbgebogen[4] = {  130,  130,  130,  130};
+int relayDir[4]                 = { true,false,false,false};
 // state
-bool weichenState[9] =            { true, true, true, true, true, true, true, true, true};
-Servo servo[9];
+bool weichenState[4] =            { true, true, true, true};
+Servo servo[4];
 
 // winkel state
-int actWinkelList[]  = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-int zielWinkelList[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+int actWinkelList[]  = {0, 0, 0, 0};
+int zielWinkelList[] = {0, 0, 0, 0};
 
 unsigned long lastWinkelStep = 0;
 
