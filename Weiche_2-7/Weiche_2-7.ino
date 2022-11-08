@@ -28,7 +28,7 @@ struct can_frame canMsg;
 int servoPin[6]                 = {   4,    6,    5,    7,    8,    9};
 int relayPin[6]                 = {  31,   32,   33,   34,   35,   36};
 int weichenStellungGerade[6]    = { 120,  190,   60,   60,   60,   60};
-int weichenStellungAbgebogen[6] = {  50,  110,  120,  120,  120,  120};
+int weichenStellungAbgebogen[6] = {  50,  110,  135,  120,  120,  120};
 int relayDir[6]                 ={false, true,false, true, true, true};
 // state
 bool weichenState[6] =            {true,false, true, true, true, true};
