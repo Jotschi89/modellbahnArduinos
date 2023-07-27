@@ -25,8 +25,8 @@ struct can_frame canMsg;
 #define SERIALIZED_CLOCK_PIN A3 // SH_CP
 #define SERIALIZED_DATA_PIN A5 // DS
 
-#define BUTTON_DOWN_PIN A1
-#define BUTTON_UP_PIN A0
+#define PREV_LOCO_PIN A1
+#define NEXT_LOCO_PIN A0
 
 #define ROTARY_CLOCK_PIN 5 // CLK
 #define ROTARY_DATA_PIN 4 // DT
@@ -87,19 +87,35 @@ const byte digit2TwoSegment[13] = {
 #define TYPE_UNSIGNED 0x01
 #define TYPE_SIGNED 0x02
 
+enum BUTTON {
+  B_FUNC_1 = 0,
+  B_FUNC_2 = 1,
+  B_FUNC_3 = 2,
+  B_FUNC_4 = 3,
+  B_PREV_LOCO = 4,
+  B_NEXT_LOCO = 5,
+  B_SPEED_ZERO = 6
+};
+
+enum BUTTON_RETURN {
+  NONE = 0,
+  BUTTON_DOWN_FLANK = 1,
+  BUTTON_UP_FLANK = 2
+};
+
+// buttons
+BUTTON stableButton = BUTTON::B_PREV_LOCO;
+int stableButtonCounter = 0;
+unsigned long buttonPressedTimer = 0;
+bool buttonState[7] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+int buttonPin[7] = {FUNC_BUTTON_PINS[0], FUNC_BUTTON_PINS[1], FUNC_BUTTON_PINS[2], FUNC_BUTTON_PINS[3], PREV_LOCO_PIN, NEXT_LOCO_PIN, ROTARY_BUTTON_PIN};
+
+byte rotaryClockState = HIGH;
+unsigned long roataryClockChangedTimer = 0;
 
 /* SERIALIZED OUTPUT */
 #define SERIALIZED_BYTE_SIZE 5
 byte serializedData[SERIALIZED_BYTE_SIZE] = {0xFF, 0xFF, 0xFF, 0xFF, 0x00};
-
-/* INPUT STATES */
-byte buttonDownState = HIGH;
-byte buttonUpState = HIGH;
-
-byte rotaryClockState = HIGH;
-byte rotaryButtonState = HIGH;
-
-byte funcButtonStates[FUNC_BUTTON_AMOUNT] = {HIGH, HIGH, HIGH, HIGH};
 
 /* CONTROL STATES */
 byte locoSelect = 0;
@@ -108,6 +124,108 @@ bool locoKnown[LOCO_AMOUNT];
 uint8_t locoFunctionStateLow[LOCO_AMOUNT];
 uint8_t locoFunctionStateHigh[LOCO_AMOUNT];
 byte funcButtonLights[FUNC_BUTTON_AMOUNT] = {LOW, LOW, LOW, LOW};
+
+
+int8_t toDCCSpeed(short canSpeed) {
+  return round(canSpeed / 8.119);
+}
+
+short toCanSpeed(int8_t dccSpeed) {
+   return round(dccSpeed * 8.119);
+}
+
+void setSerialized(byte data, byte bitPosition, byte bitLength) {
+  byte offset = bitPosition;
+  for (byte i = 0; i < bitLength; i++) {
+    if (bitRead(data, i) == 0x01) {
+      bitSet(serializedData[offset / 8], offset % 8);
+    } else {
+      bitClear(serializedData[offset / 8], offset % 8);
+    }
+    offset++;
+  }
+}
+
+void setThreeDigitDisplay(byte number, byte bitPosition, byte type) {
+  byte one;
+  byte ten;
+  byte hundred;
+  bool isNegative = false;
+
+  if (type == TYPE_SIGNED) {
+    // dealing with actual signed, but type given is unsigned - that's why this looks a bit strange
+    isNegative = number > 127;
+    if (isNegative) {
+      // revert two's complement
+      number = ~number + 1;
+    }
+  }
+
+  if (number > 199) {
+    // set '-'
+    one = ten = hundred = 10;
+  } else {
+    one = number % 10;
+    if (number < 10) {
+      // set empty
+      ten = 11;
+    } else {
+      ten = (number / 10) % 10;
+    }
+    if (isNegative) {
+      if (number > 99) {
+        // set '-1'
+        hundred = 12;
+      } else {
+        // set '-';
+        hundred = 10;
+      }
+    } else {
+      // Note: 0 is displayed as empty (see digit2TwoSegment array)
+      hundred = number / 100;
+    }
+  }
+
+  setSerialized(digit2SevenSegment[one], bitPosition, 7);
+  setSerialized(digit2SevenSegment[ten], bitPosition + 7, 7);
+  setSerialized(digit2TwoSegment[hundred], bitPosition + 14, 2);
+}
+
+void flushDisplays() {
+  setThreeDigitDisplay(speed[locoSelect], 0, TYPE_SIGNED);
+  setThreeDigitDisplay(locoSelect, 16, TYPE_UNSIGNED);
+
+  // Func Button Lights
+  setSerialized(funcButtonLights[0], 36, 1);
+  setSerialized(funcButtonLights[1], 34, 1);
+  setSerialized(funcButtonLights[2], 38, 1);
+  setSerialized(funcButtonLights[3], 33, 1);
+  flushSerialized();
+}
+
+void setSerializedBytes(byte data[], byte bitPosition, byte bitLength) {
+  byte offset = bitPosition;
+  for (byte i = 0; i < bitLength; i++) {
+    if (bitRead(data[i / 8], i % 8) == 0x01) {
+      bitSet(serializedData[offset / 8], offset % 8);
+    } else {
+      bitClear(serializedData[offset / 8], offset % 8);
+    }
+    offset++;
+  }
+}
+
+void writeSerializedData(byte data[], byte arraySize) {
+  for (byte i = arraySize; i > 0; i--) {
+    shiftOut(SERIALIZED_DATA_PIN, SERIALIZED_CLOCK_PIN, MSBFIRST, data[i - 1]);
+  }
+  digitalWrite(SERIALIZED_LATCH_PIN, HIGH);
+  digitalWrite(SERIALIZED_LATCH_PIN, LOW);
+}
+
+void flushSerialized() {
+  writeSerializedData(serializedData, SERIALIZED_BYTE_SIZE);
+}
 
 void activateLok(byte lokID) {
   struct zcan_message zcantest;
@@ -166,7 +284,7 @@ void sendCanLokSpeed(byte lokID, short speedValue) {
     vor = false;
   }
   byte dirByte = B00001100;
-  speedValue = abs(speedValue * 7.88);
+  speedValue = toCanSpeed(speedValue);
   zcantest.data[2] = speedValue % 256;
   zcantest.data[3] = ((speedValue >> 8) & B00000011) | (vor ? 0 : dirByte);
   mcp2515.sendMessage(&toCanFrame(zcantest));
@@ -215,13 +333,35 @@ void funcButtonUp(short buttonNr) {
   }
 }
 
+BUTTON_RETURN computeDigitalButtonInput(BUTTON button, unsigned long t) {
+  bool newState = digitalRead(buttonPin[button]);
+  if (newState == buttonState[button]) {
+    return BUTTON_RETURN::NONE;
+  }
+  if (stableButton == button) {
+    stableButtonCounter++;
+  } else {
+    stableButton = button;
+    stableButtonCounter = 0;
+  }
+  if (stableButtonCounter > 4 && t - buttonPressedTimer > 50) {
+    buttonPressedTimer = t;
+    buttonState[button] = newState;
+    if (newState == LOW) {
+      return BUTTON_RETURN::BUTTON_DOWN_FLANK;
+    } else {
+      return BUTTON_RETURN::BUTTON_UP_FLANK;
+    }
+  }
+}
+
 void setup() {
   pinMode(SERIALIZED_LATCH_PIN, OUTPUT);
   pinMode(SERIALIZED_CLOCK_PIN, OUTPUT);
   pinMode(SERIALIZED_DATA_PIN, OUTPUT);
 
-  pinMode(BUTTON_DOWN_PIN, INPUT_PULLUP);
-  pinMode(BUTTON_UP_PIN, INPUT_PULLUP);
+  pinMode(PREV_LOCO_PIN, INPUT_PULLUP);
+  pinMode(NEXT_LOCO_PIN, INPUT_PULLUP);
 
   pinMode(ROTARY_CLOCK_PIN, INPUT);
   pinMode(ROTARY_DATA_PIN, INPUT);
@@ -258,49 +398,64 @@ void setup() {
 }
 
 void loop() {
-  // LOCO SELECT
-  byte buttonDown = digitalRead(BUTTON_DOWN_PIN);
-  if (buttonDown != buttonDownState) {
-    if (buttonDown == LOW) {
-      do {
-        if (locoSelect == 0) {
-          locoSelect = LOCO_AMOUNT -1;
-        } else {
-          locoSelect--;
-        }
-      } while(locoKnown[locoSelect] == false);
-      requestCanLokSpeed(locoSelect);
-      requestCanLokFunctionState(locoSelect);
-      activateLok(locoSelect);
+  unsigned long t = millis();
+
+  // previouse loco button
+  if (computeDigitalButtonInput(B_PREV_LOCO, t) == BUTTON_DOWN_FLANK) {
+    do {
+      if (locoSelect == 0) {
+        locoSelect = LOCO_AMOUNT -1;
+      } else {
+        locoSelect--;
+      }
+    } while(locoKnown[locoSelect] == false);
+    requestCanLokSpeed(locoSelect);
+    requestCanLokFunctionState(locoSelect);
+    activateLok(locoSelect);
+    flushDisplays();
+  }
+
+  // next loco button
+  if (computeDigitalButtonInput(B_NEXT_LOCO, t) == BUTTON_DOWN_FLANK) {
+    do {
+      if (locoSelect == LOCO_AMOUNT - 1) {
+        locoSelect = 0;
+      } else {
+        locoSelect++;
+      }
+    } while(locoKnown[locoSelect] == false);
+    requestCanLokSpeed(locoSelect);
+    requestCanLokFunctionState(locoSelect);
+    activateLok(locoSelect);
+    flushDisplays();
+  }
+
+  // function buttons
+  for (byte i = 0; i < FUNC_BUTTON_AMOUNT; i++) {
+    BUTTON_RETURN buttonReturn = computeDigitalButtonInput(i, t);
+    if (buttonReturn == BUTTON_DOWN_FLANK) {
+      funcButtonDown(i);
+    } else if (buttonReturn == BUTTON_UP_FLANK) {
+      funcButtonUp(i);
+    }
+    if (buttonReturn != BUTTON_RETURN::NONE) {
+      funcButtonLightUpdate();
       flushDisplays();
     }
-    // debounce button press & button release
-    delay(10);
   }
-  buttonDownState = buttonDown;
-  
-  byte buttonUp = digitalRead(BUTTON_UP_PIN);
-  if (buttonUp != buttonUpState) {
-    if (buttonUp == LOW) {
-      do {
-        if (locoSelect == LOCO_AMOUNT - 1) {
-          locoSelect = 0;
-        } else {
-          locoSelect++;
-        }
-      } while(locoKnown[locoSelect] == false);
-      requestCanLokSpeed(locoSelect);
-      requestCanLokFunctionState(locoSelect);
-      activateLok(locoSelect);
-      flushDisplays();
-    }
-    delay(10);
+
+  // speed zero button
+  if (computeDigitalButtonInput(B_SPEED_ZERO, t) == BUTTON_DOWN_FLANK) {
+    speed[locoSelect] = 0;
+    sendCanLokSpeed(locoSelect, speed[locoSelect]);
+    flushDisplays();
   }
-  buttonUpState = buttonUp;
 
   // SPEED KNOB
   byte rotaryClock = digitalRead(ROTARY_CLOCK_PIN);
-  if (rotaryClock != rotaryClockState) {
+  if (rotaryClock != rotaryClockState && t - roataryClockChangedTimer > 5) {
+    roataryClockChangedTimer = t;
+    rotaryClockState = rotaryClock;
     if (digitalRead(ROTARY_DATA_PIN) != rotaryClock) {
       // go UP
       speed[locoSelect] += SPEED_STEP;
@@ -322,44 +477,7 @@ void loop() {
     }
     sendCanLokSpeed(locoSelect, speed[locoSelect]);
     flushDisplays();
-    delay(4);
   }
-  rotaryClockState = rotaryClock;
-  
-  byte rotaryButton = digitalRead(ROTARY_BUTTON_PIN);
-  if (rotaryButton != rotaryButtonState) {
-    if (rotaryButton == LOW) {
-      speed[locoSelect] = 0;
-      sendCanLokSpeed(locoSelect, speed[locoSelect]);
-      flushDisplays();
-    }
-    delay(4);
-  }
-  rotaryButtonState = rotaryButton;
-  
-  // FUNCTION BUTTONS
-  for (byte i = 0; i < FUNC_BUTTON_AMOUNT; i++) {
-    byte funcButton = digitalRead(FUNC_BUTTON_PINS[i]);
-    if (funcButton != funcButtonStates[i]) {
-      if (funcButton == LOW) {
-        funcButtonDown(i);
-      } else if (funcButton == HIGH) {
-        funcButtonUp(i);
-      }
-      funcButtonLightUpdate();
-      flushDisplays();
-      delay(4);
-    }
-    funcButtonStates[i] = funcButton;
-}
-
-  // count numbers up/down
-  /*for (byte number = 0;; number++) {
-    setThreeDigitDisplay(number, 0);
-    setThreeDigitDisplay(255 - number, 16);
-    flushSerialized();
-    delay(100);
-  }//*/
 
   // poll CAN message
   if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK) {
@@ -372,7 +490,7 @@ void loop() {
         byte dirByte = B00001100;
         
         short speedValue = zcanMsg.data[2] + ((zcanMsg.data[3] & B00000011) << 8);
-        speedValue = round(speedValue / 7.88);
+        speedValue = toDCCSpeed(speedValue);
         bool vor = (zcanMsg.data[3] & dirByte) == 0;
         if (!vor) {
           speedValue = -speedValue;
@@ -390,98 +508,4 @@ void loop() {
       }
     }
   }
-}
-
-
-void flushDisplays() {
-  setThreeDigitDisplay(speed[locoSelect], 0, TYPE_SIGNED);
-  setThreeDigitDisplay(locoSelect, 16, TYPE_UNSIGNED);
-
-  // Func Button Lights
-  setSerialized(funcButtonLights[0], 36, 1);
-  setSerialized(funcButtonLights[1], 34, 1);
-  setSerialized(funcButtonLights[2], 38, 1);
-  setSerialized(funcButtonLights[3], 33, 1);
-  flushSerialized();
-}
-
-void setSerializedBytes(byte data[], byte bitPosition, byte bitLength) {
-  byte offset = bitPosition;
-  for (byte i = 0; i < bitLength; i++) {
-    if (bitRead(data[i / 8], i % 8) == 0x01) {
-      bitSet(serializedData[offset / 8], offset % 8);
-    } else {
-      bitClear(serializedData[offset / 8], offset % 8);
-    }
-    offset++;
-  }
-}
-
-void setSerialized(byte data, byte bitPosition, byte bitLength) {
-  byte offset = bitPosition;
-  for (byte i = 0; i < bitLength; i++) {
-    if (bitRead(data, i) == 0x01) {
-      bitSet(serializedData[offset / 8], offset % 8);
-    } else {
-      bitClear(serializedData[offset / 8], offset % 8);
-    }
-    offset++;
-  }
-}
-
-void flushSerialized() {
-  writeSerializedData(serializedData, SERIALIZED_BYTE_SIZE);
-}
-
-void writeSerializedData(byte data[], byte arraySize) {
-  for (byte i = arraySize; i > 0; i--) {
-    shiftOut(SERIALIZED_DATA_PIN, SERIALIZED_CLOCK_PIN, MSBFIRST, data[i - 1]);
-  }
-  digitalWrite(SERIALIZED_LATCH_PIN, HIGH);
-  digitalWrite(SERIALIZED_LATCH_PIN, LOW);
-}
-
-void setThreeDigitDisplay(byte number, byte bitPosition, byte type) {
-  byte one;
-  byte ten;
-  byte hundred;
-  bool isNegative = false;
-
-  if (type == TYPE_SIGNED) {
-    // dealing with actual signed, but type given is unsigned - that's why this looks a bit strange
-    isNegative = number > 127;
-    if (isNegative) {
-      // revert two's complement
-      number = ~number + 1;
-    }
-  }
-
-  if (number > 199) {
-    // set '-'
-    one = ten = hundred = 10;
-  } else {
-    one = number % 10;
-    if (number < 10) {
-      // set empty
-      ten = 11;
-    } else {
-      ten = (number / 10) % 10;
-    }
-    if (isNegative) {
-      if (number > 99) {
-        // set '-1'
-        hundred = 12;
-      } else {
-        // set '-';
-        hundred = 10;
-      }
-    } else {
-      // Note: 0 is displayed as empty (see digit2TwoSegment array)
-      hundred = number / 100;
-    }
-  }
-
-  setSerialized(digit2SevenSegment[one], bitPosition, 7);
-  setSerialized(digit2SevenSegment[ten], bitPosition + 7, 7);
-  setSerialized(digit2TwoSegment[hundred], bitPosition + 14, 2);
 }
