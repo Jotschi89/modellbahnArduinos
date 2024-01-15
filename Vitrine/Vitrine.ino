@@ -100,7 +100,7 @@ boolean detectingQueued;
 unsigned long laserFreeTimestamp = 0;
 
 // detection mode
-#define DETECTION_TIME_MS (3000)
+#define DETECTION_TIME_MS (1000)
 uint8_t detectionLevel = 0;
 unsigned long detectionTimestamp = 0;
 

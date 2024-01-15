@@ -204,6 +204,7 @@ void loop() {
         if (zielWinkel == actWinkel + inc) {
           servo[weicheIndex].detach();
         }
+        break;
       }
     }
   }
