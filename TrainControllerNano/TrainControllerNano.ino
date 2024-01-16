@@ -28,8 +28,8 @@ struct can_frame canMsg;
 #define PREV_LOCO_PIN A1
 #define NEXT_LOCO_PIN A0
 
-#define ROTARY_CLOCK_PIN 5 // CLK
-#define ROTARY_DATA_PIN 4 // DT
+#define ROTARY_CLOCK_PIN 5 // CLK, is the primary output pulse used to determine the amount of rotation. Each time the knob is turned in either direction by just one detent (click), the ‘CLK’ output goes through one cycle of going HIGH and then LOW.
+#define ROTARY_DATA_PIN 4 // DT, is similar to CLK output, but it lags behind CLK by a 90° phase shift. This output is used to determine the direction of rotation.
 #define ROTARY_BUTTON_PIN 3 // SW
 
 #define FUNC_BUTTON_AMOUNT 4
@@ -38,8 +38,8 @@ const byte FUNC_BUTTON_PINS[FUNC_BUTTON_AMOUNT] = {6, 7, 8, 9};
 
 /* CONFIGURATION */
 
-#define SPEED_STEP 3
-#define SPEED_MAX 102
+#define MAX_SPEED_STEP 5
+#define SPEED_MAX 100
 #define LOCO_AMOUNT 128
 
 
@@ -105,7 +105,6 @@ enum BUTTON_RETURN {
 
 // buttons
 BUTTON stableButton = BUTTON::B_PREV_LOCO;
-int stableButtonCounter = 0;
 unsigned long buttonPressedTimer = 0;
 bool buttonState[7] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
 int buttonPin[7] = {FUNC_BUTTON_PINS[0], FUNC_BUTTON_PINS[1], FUNC_BUTTON_PINS[2], FUNC_BUTTON_PINS[3], PREV_LOCO_PIN, NEXT_LOCO_PIN, ROTARY_BUTTON_PIN};
@@ -131,7 +130,7 @@ int8_t toDCCSpeed(short canSpeed) {
 }
 
 short toCanSpeed(int8_t dccSpeed) {
-   return round(dccSpeed * 8.119);
+   return ceil(abs(dccSpeed) * 8.119);
 }
 
 void setSerialized(byte data, byte bitPosition, byte bitLength) {
@@ -228,66 +227,66 @@ void flushSerialized() {
 }
 
 void activateLok(byte lokID) {
-  struct zcan_message zcantest;
-  zcantest.group = ZCAN_GROUP::FAHRZEUGE;
-  zcantest.command = 16;  //  16 -> lok aktivieren
-  zcantest.mode = ZCAN_MODE::COMMAND;
-  zcantest.networkId = NETWORK_ID;
-  zcantest.dataLength = 3;
-  zcantest.data[0] = lokID;
-  zcantest.data[1] = 0;
-  zcantest.data[2] = 16;
+  struct zcan_message zcanMessage;
+  zcanMessage.group = ZCAN_GROUP::FAHRZEUGE;
+  zcanMessage.command = 16;  //  16 -> lok aktivieren
+  zcanMessage.mode = ZCAN_MODE::COMMAND;
+  zcanMessage.networkId = NETWORK_ID;
+  zcanMessage.dataLength = 3;
+  zcanMessage.data[0] = lokID;
+  zcanMessage.data[1] = 0;
+  zcanMessage.data[2] = 16;
   
-  mcp2515.sendMessage(&toCanFrame(zcantest));  
+  mcp2515.sendMessage(&toCanFrame(zcanMessage));  
 }
 
 void requestCanLokSpeed(byte lokID) {
-  struct zcan_message zcantest;
-  zcantest.group = ZCAN_GROUP::FAHRZEUGE;
-  zcantest.command = 2;  // 2 -> speed command
-  zcantest.mode = ZCAN_MODE::REQUEST;
-  zcantest.networkId = NETWORK_ID;
-  zcantest.dataLength = 4;
-  zcantest.data[0] = lokID;
-  zcantest.data[1] = 0;
-  zcantest.data[2] = 0;
-  zcantest.data[3] = 0;
-  mcp2515.sendMessage(&toCanFrame(zcantest));
+  struct zcan_message zcanMessage;
+  zcanMessage.group = ZCAN_GROUP::FAHRZEUGE;
+  zcanMessage.command = 2;  // 2 -> speed command
+  zcanMessage.mode = ZCAN_MODE::REQUEST;
+  zcanMessage.networkId = NETWORK_ID;
+  zcanMessage.dataLength = 4;
+  zcanMessage.data[0] = lokID;
+  zcanMessage.data[1] = 0;
+  zcanMessage.data[2] = 0;
+  zcanMessage.data[3] = 0;
+  mcp2515.sendMessage(&toCanFrame(zcanMessage));
 }
 
 void requestCanLokFunctionState(byte lokID) {
-  struct zcan_message zcantest;
-  zcantest.group = ZCAN_GROUP::FAHRZEUGE;
-  zcantest.command = 3;  // 3 -> fahrzeug schalten command
-  zcantest.mode = ZCAN_MODE::REQUEST;
-  zcantest.networkId = NETWORK_ID;
-  zcantest.dataLength = 4;
-  zcantest.data[0] = lokID;
-  zcantest.data[1] = 0;
-  zcantest.data[2] = 0;
-  zcantest.data[3] = 0;
-  mcp2515.sendMessage(&toCanFrame(zcantest));
+  struct zcan_message zcanMessage;
+  zcanMessage.group = ZCAN_GROUP::FAHRZEUGE;
+  zcanMessage.command = 3;  // 3 -> fahrzeug schalten command
+  zcanMessage.mode = ZCAN_MODE::REQUEST;
+  zcanMessage.networkId = NETWORK_ID;
+  zcanMessage.dataLength = 4;
+  zcanMessage.data[0] = lokID;
+  zcanMessage.data[1] = 0;
+  zcanMessage.data[2] = 0;
+  zcanMessage.data[3] = 0;
+  mcp2515.sendMessage(&toCanFrame(zcanMessage));
 }
 
-void sendCanLokSpeed(byte lokID, short speedValue) {
-  struct zcan_message zcantest;
-  zcantest.group = ZCAN_GROUP::FAHRZEUGE;
-  zcantest.command = 2;  // 2 -> speed command
-  zcantest.mode = ZCAN_MODE::COMMAND;
-  zcantest.networkId = NETWORK_ID;
-  zcantest.dataLength = 4;
-  zcantest.data[0] = lokID;
-  zcantest.data[1] = 0;
+void sendCanLokSpeed(byte lokID, int8_t dccSpeed) {
+  struct zcan_message zcanMessage;
+  zcanMessage.group = ZCAN_GROUP::FAHRZEUGE;
+  zcanMessage.command = 2;  // 2 -> speed command
+  zcanMessage.mode = ZCAN_MODE::COMMAND;
+  zcanMessage.networkId = NETWORK_ID;
+  zcanMessage.dataLength = 4;
+  zcanMessage.data[0] = lokID;
+  zcanMessage.data[1] = 0;
 
   bool vor = true;
-  if (speedValue < 0) {
+  if (dccSpeed < 0) {
     vor = false;
   }
   byte dirByte = B00001100;
-  speedValue = toCanSpeed(speedValue);
-  zcantest.data[2] = speedValue % 256;
-  zcantest.data[3] = ((speedValue >> 8) & B00000011) | (vor ? 0 : dirByte);
-  mcp2515.sendMessage(&toCanFrame(zcantest));
+  short canSpeed = toCanSpeed(dccSpeed);
+  zcanMessage.data[2] = canSpeed % 256;
+  zcanMessage.data[3] = ((canSpeed >> 8) & B00000011) | (vor ? 0 : dirByte);
+  mcp2515.sendMessage(&toCanFrame(zcanMessage));
 }
 
 void sendCanLokFunctionState(byte lokID, byte buttonNr, bool state) {
@@ -297,20 +296,20 @@ void sendCanLokFunctionState(byte lokID, byte buttonNr, bool state) {
   } else {
     bitClear(locoFunctionStateLow[lokID], buttonNr);
   }
-  struct zcan_message zcantest;
-  zcantest.group = ZCAN_GROUP::FAHRZEUGE;
-  zcantest.command = 3;  //  3 -> fahrzeug schalten command
-  zcantest.mode = ZCAN_MODE::COMMAND;
-  zcantest.networkId = NETWORK_ID;
-  zcantest.dataLength = 6;
-  zcantest.data[0] = lokID;
-  zcantest.data[1] = 0;
-  zcantest.data[2] = locoFunctionStateLow[lokID];
-  zcantest.data[3] = locoFunctionStateHigh[lokID];
-  zcantest.data[4] = 0;
-  zcantest.data[5] = 0;
+  struct zcan_message zcanMessage;
+  zcanMessage.group = ZCAN_GROUP::FAHRZEUGE;
+  zcanMessage.command = 3;  //  3 -> fahrzeug schalten command
+  zcanMessage.mode = ZCAN_MODE::COMMAND;
+  zcanMessage.networkId = NETWORK_ID;
+  zcanMessage.dataLength = 6;
+  zcanMessage.data[0] = lokID;
+  zcanMessage.data[1] = 0;
+  zcanMessage.data[2] = locoFunctionStateLow[lokID];
+  zcanMessage.data[3] = locoFunctionStateHigh[lokID];
+  zcanMessage.data[4] = 0;
+  zcanMessage.data[5] = 0;
   
-  mcp2515.sendMessage(&toCanFrame(zcantest));
+  mcp2515.sendMessage(&toCanFrame(zcanMessage));
 }
 
 void funcButtonLightUpdate() {
@@ -338,13 +337,7 @@ BUTTON_RETURN computeDigitalButtonInput(BUTTON button, unsigned long t) {
   if (newState == buttonState[button]) {
     return BUTTON_RETURN::NONE;
   }
-  if (stableButton == button) {
-    stableButtonCounter++;
-  } else {
-    stableButton = button;
-    stableButtonCounter = 0;
-  }
-  if (stableButtonCounter > 4 && t - buttonPressedTimer > 50) {
+  if (t - buttonPressedTimer > 100) {
     buttonPressedTimer = t;
     buttonState[button] = newState;
     if (newState == LOW) {
@@ -380,7 +373,6 @@ void setup() {
     locoKnown[i] = false;
   }
   locoKnown[0] = true;
-  locoKnown[61] = true;  // todo: only for development
 
   flushDisplays();
 
@@ -399,12 +391,13 @@ void setup() {
 
 void loop() {
   unsigned long t = millis();
+  bool fDisplays = false;
 
   // previouse loco button
-  if (computeDigitalButtonInput(B_PREV_LOCO, t) == BUTTON_DOWN_FLANK) {
+  if (computeDigitalButtonInput(B_PREV_LOCO, t) == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
     do {
       if (locoSelect == 0) {
-        locoSelect = LOCO_AMOUNT -1;
+        locoSelect = LOCO_AMOUNT - 1;
       } else {
         locoSelect--;
       }
@@ -412,11 +405,11 @@ void loop() {
     requestCanLokSpeed(locoSelect);
     requestCanLokFunctionState(locoSelect);
     activateLok(locoSelect);
-    flushDisplays();
+    fDisplays = true;
   }
 
   // next loco button
-  if (computeDigitalButtonInput(B_NEXT_LOCO, t) == BUTTON_DOWN_FLANK) {
+  if (computeDigitalButtonInput(B_NEXT_LOCO, t) == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
     do {
       if (locoSelect == LOCO_AMOUNT - 1) {
         locoSelect = 0;
@@ -427,56 +420,64 @@ void loop() {
     requestCanLokSpeed(locoSelect);
     requestCanLokFunctionState(locoSelect);
     activateLok(locoSelect);
-    flushDisplays();
+    fDisplays = true;
   }
 
   // function buttons
   for (byte i = 0; i < FUNC_BUTTON_AMOUNT; i++) {
     BUTTON_RETURN buttonReturn = computeDigitalButtonInput(i, t);
-    if (buttonReturn == BUTTON_DOWN_FLANK) {
+    if (buttonReturn == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
       funcButtonDown(i);
-    } else if (buttonReturn == BUTTON_UP_FLANK) {
+    } else if (buttonReturn == BUTTON_RETURN::BUTTON_UP_FLANK) {
       funcButtonUp(i);
     }
     if (buttonReturn != BUTTON_RETURN::NONE) {
       funcButtonLightUpdate();
-      flushDisplays();
+      fDisplays = true;
     }
   }
 
   // speed zero button
-  if (computeDigitalButtonInput(B_SPEED_ZERO, t) == BUTTON_DOWN_FLANK) {
+  if (computeDigitalButtonInput(B_SPEED_ZERO, t) == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
     speed[locoSelect] = 0;
     sendCanLokSpeed(locoSelect, speed[locoSelect]);
-    flushDisplays();
+    fDisplays = true;
   }
 
   // SPEED KNOB
   byte rotaryClock = digitalRead(ROTARY_CLOCK_PIN);
+  // prevent spam of speed messages by including a small waiting time
   if (rotaryClock != rotaryClockState && t - roataryClockChangedTimer > 5) {
+    int8_t currentSpeedStep = MAX_SPEED_STEP;
+    if (speed[locoSelect] < 4 && speed[locoSelect] > -4) {
+      currentSpeedStep = 1;
+    } else if (speed[locoSelect] < 10 && speed[locoSelect] > -10) {
+      // if the update was shortly before, increase the step size
+      currentSpeedStep = 2;
+    }
     roataryClockChangedTimer = t;
     rotaryClockState = rotaryClock;
     if (digitalRead(ROTARY_DATA_PIN) != rotaryClock) {
       // go UP
-      speed[locoSelect] += SPEED_STEP;
+      speed[locoSelect] = speed[locoSelect] + currentSpeedStep;
       if (speed[locoSelect] > SPEED_MAX) {
         speed[locoSelect] = SPEED_MAX;
-      } else if(speed[locoSelect] > 0 && speed[locoSelect] < SPEED_STEP) {
+      } else if(speed[locoSelect] > 0 && speed[locoSelect] < currentSpeedStep) {
         // coming from negative - let's not step over 0
         speed[locoSelect] = 0;
       }
     } else {
       // go DOWN
-      speed[locoSelect] -= SPEED_STEP;
+      speed[locoSelect] = speed[locoSelect] - currentSpeedStep;
       if (speed[locoSelect] < -SPEED_MAX) {
         speed[locoSelect] = -SPEED_MAX;
-      } else if(speed[locoSelect] < 0 && speed[locoSelect] > -SPEED_STEP) {
+      } else if(speed[locoSelect] < 0 && speed[locoSelect] > -currentSpeedStep) {
         // coming from positive - let's not step over 0
         speed[locoSelect] = 0;
       }
     }
     sendCanLokSpeed(locoSelect, speed[locoSelect]);
-    flushDisplays();
+    fDisplays = true;
   }
 
   // poll CAN message
@@ -504,8 +505,12 @@ void loop() {
       }
       if (locoSelect == lokID) {
         funcButtonLightUpdate();
-        flushDisplays();
+        fDisplays = true;
       }
     }
+  }
+
+  if (flushDisplays) {
+    flushDisplays();
   }
 }
