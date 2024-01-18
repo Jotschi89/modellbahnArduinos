@@ -2,6 +2,7 @@
 #include <mcp2515.h>
 #include <zcan.h>
 #include <math.h>
+#include <ButtonDebounce.h>
 
 // PIN Belegung 
 // CAN-Module -> Arduino NANO
@@ -97,17 +98,17 @@ enum BUTTON {
   B_SPEED_ZERO = 6
 };
 
-enum BUTTON_RETURN {
-  NONE = 0,
-  BUTTON_DOWN_FLANK = 1,
-  BUTTON_UP_FLANK = 2
-};
-
 // buttons
-BUTTON stableButton = BUTTON::B_PREV_LOCO;
-unsigned long buttonPressedTimer = 0;
-bool buttonState[7] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
-int buttonPin[7] = {FUNC_BUTTON_PINS[0], FUNC_BUTTON_PINS[1], FUNC_BUTTON_PINS[2], FUNC_BUTTON_PINS[3], PREV_LOCO_PIN, NEXT_LOCO_PIN, ROTARY_BUTTON_PIN};
+#define BUTTON_DEBOUNCE_MS 50
+ButtonDebounce buttons[] = {
+  ButtonDebounce(FUNC_BUTTON_PINS[0], BUTTON_DEBOUNCE_MS),
+  ButtonDebounce(FUNC_BUTTON_PINS[1], BUTTON_DEBOUNCE_MS),
+  ButtonDebounce(FUNC_BUTTON_PINS[2], BUTTON_DEBOUNCE_MS),
+  ButtonDebounce(FUNC_BUTTON_PINS[3], BUTTON_DEBOUNCE_MS),
+  ButtonDebounce(PREV_LOCO_PIN, BUTTON_DEBOUNCE_MS),
+  ButtonDebounce(NEXT_LOCO_PIN, BUTTON_DEBOUNCE_MS),
+  ButtonDebounce(ROTARY_BUTTON_PIN, BUTTON_DEBOUNCE_MS),
+};
 
 byte rotaryClockState = HIGH;
 unsigned long roataryClockChangedTimer = 0;
@@ -123,7 +124,7 @@ bool locoKnown[LOCO_AMOUNT];
 uint8_t locoFunctionStateLow[LOCO_AMOUNT];
 uint8_t locoFunctionStateHigh[LOCO_AMOUNT];
 byte funcButtonLights[FUNC_BUTTON_AMOUNT] = {LOW, LOW, LOW, LOW};
-
+bool fDisplays = false;
 
 int8_t toDCCSpeed(short canSpeed) {
   return round(canSpeed / 8.119);
@@ -332,19 +333,69 @@ void funcButtonUp(short buttonNr) {
   }
 }
 
-BUTTON_RETURN computeDigitalButtonInput(BUTTON button, unsigned long t) {
-  bool newState = digitalRead(buttonPin[button]);
-  if (newState == buttonState[button]) {
-    return BUTTON_RETURN::NONE;
+void prevLocoButtonChanged(const int state) {
+  if (state == LOW) {
+    do {
+      if (locoSelect == 0) {
+        locoSelect = LOCO_AMOUNT - 1;
+      } else {
+        locoSelect--;
+      }
+    } while(locoKnown[locoSelect] == false);
+    requestCanLokSpeed(locoSelect);
+    requestCanLokFunctionState(locoSelect);
+    activateLok(locoSelect);
+    fDisplays = true;
   }
-  if (t - buttonPressedTimer > 100) {
-    buttonPressedTimer = t;
-    buttonState[button] = newState;
-    if (newState == LOW) {
-      return BUTTON_RETURN::BUTTON_DOWN_FLANK;
-    } else {
-      return BUTTON_RETURN::BUTTON_UP_FLANK;
-    }
+}
+
+void nextLocoButtonChanged(const int state) {
+  if (state == LOW) {
+    do {
+      if (locoSelect == LOCO_AMOUNT - 1) {
+        locoSelect = 0;
+      } else {
+        locoSelect++;
+      }
+    } while(locoKnown[locoSelect] == false);
+    requestCanLokSpeed(locoSelect);
+    requestCanLokFunctionState(locoSelect);
+    activateLok(locoSelect);
+    fDisplays = true;
+  }
+}
+
+void functionButtonChanged(const int state, byte buttonNr) {
+  if (state == LOW) {
+    funcButtonDown(buttonNr);
+  } else if (state == HIGH) {
+    funcButtonUp(buttonNr);
+  }
+  funcButtonLightUpdate();
+  fDisplays = true;
+}
+
+void functionButton1Changed(const int state) {
+  functionButtonChanged(state, 0);
+}
+
+void functionButton2Changed(const int state) {
+  functionButtonChanged(state, 1);
+}
+
+void functionButton3Changed(const int state) {
+  functionButtonChanged(state, 2);
+}
+
+void functionButton4Changed(const int state) {
+  functionButtonChanged(state, 3);
+}
+
+void zeroButtonChanged(const int state) {
+  if (state == LOW) {
+    speed[locoSelect] = 0;
+    sendCanLokSpeed(locoSelect, speed[locoSelect]);
+    fDisplays = true;
   }
 }
 
@@ -363,6 +414,14 @@ void setup() {
   for (byte i = 0; i < FUNC_BUTTON_AMOUNT; i++) {
     pinMode(FUNC_BUTTON_PINS[i], INPUT_PULLUP);
   }
+
+  buttons[BUTTON::B_FUNC_1].setCallback(functionButton1Changed);
+  buttons[BUTTON::B_FUNC_2].setCallback(functionButton2Changed);
+  buttons[BUTTON::B_FUNC_3].setCallback(functionButton3Changed);
+  buttons[BUTTON::B_FUNC_4].setCallback(functionButton4Changed);
+  buttons[BUTTON::B_PREV_LOCO].setCallback(prevLocoButtonChanged);
+  buttons[BUTTON::B_NEXT_LOCO].setCallback(nextLocoButtonChanged);
+  buttons[BUTTON::B_SPEED_ZERO].setCallback(zeroButtonChanged);
 
   rotaryClockState = digitalRead(ROTARY_CLOCK_PIN);
 
@@ -391,58 +450,15 @@ void setup() {
 
 void loop() {
   unsigned long t = millis();
-  bool fDisplays = false;
+  fDisplays = false;
 
-  // previouse loco button
-  if (computeDigitalButtonInput(B_PREV_LOCO, t) == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
-    do {
-      if (locoSelect == 0) {
-        locoSelect = LOCO_AMOUNT - 1;
-      } else {
-        locoSelect--;
-      }
-    } while(locoKnown[locoSelect] == false);
-    requestCanLokSpeed(locoSelect);
-    requestCanLokFunctionState(locoSelect);
-    activateLok(locoSelect);
-    fDisplays = true;
-  }
-
-  // next loco button
-  if (computeDigitalButtonInput(B_NEXT_LOCO, t) == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
-    do {
-      if (locoSelect == LOCO_AMOUNT - 1) {
-        locoSelect = 0;
-      } else {
-        locoSelect++;
-      }
-    } while(locoKnown[locoSelect] == false);
-    requestCanLokSpeed(locoSelect);
-    requestCanLokFunctionState(locoSelect);
-    activateLok(locoSelect);
-    fDisplays = true;
-  }
-
-  // function buttons
-  for (byte i = 0; i < FUNC_BUTTON_AMOUNT; i++) {
-    BUTTON_RETURN buttonReturn = computeDigitalButtonInput(i, t);
-    if (buttonReturn == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
-      funcButtonDown(i);
-    } else if (buttonReturn == BUTTON_RETURN::BUTTON_UP_FLANK) {
-      funcButtonUp(i);
-    }
-    if (buttonReturn != BUTTON_RETURN::NONE) {
-      funcButtonLightUpdate();
-      fDisplays = true;
-    }
-  }
-
-  // speed zero button
-  if (computeDigitalButtonInput(B_SPEED_ZERO, t) == BUTTON_RETURN::BUTTON_DOWN_FLANK) {
-    speed[locoSelect] = 0;
-    sendCanLokSpeed(locoSelect, speed[locoSelect]);
-    fDisplays = true;
-  }
+  buttons[BUTTON::B_SPEED_ZERO].update();
+  buttons[BUTTON::B_PREV_LOCO].update();
+  buttons[BUTTON::B_NEXT_LOCO].update();
+  buttons[BUTTON::B_FUNC_1].update();
+  buttons[BUTTON::B_FUNC_2].update();
+  buttons[BUTTON::B_FUNC_3].update();
+  buttons[BUTTON::B_FUNC_4].update();
 
   // SPEED KNOB
   byte rotaryClock = digitalRead(ROTARY_CLOCK_PIN);
@@ -510,7 +526,7 @@ void loop() {
     }
   }
 
-  if (flushDisplays) {
+  if (fDisplays) {
     flushDisplays();
   }
 }
